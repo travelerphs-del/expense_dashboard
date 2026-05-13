@@ -274,7 +274,14 @@ select.cs:focus{outline:none;border-color:var(--accent)}
         <button class="btn btn-o btn-sm" onclick="disconnectGoogle()">연결 해제</button>
       </div>
       <div class="dvd"></div>
-      <div class="ss">🗑️ 데이터</div>
+      <div class="ss">⚡ 개별처리 가맹점</div>
+      <div class="sh" style="margin-bottom:10px">카테고리 변경 시 같은 이름의 다른 거래에 <strong>일괄 적용하지 않는</strong> 가맹점입니다. (예: Grab — 택시/배달 혼용)</div>
+      <div id="amb-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="amb-input" class="si" style="flex:1" placeholder="가맹점명 입력 (예: grab)">
+        <button class="btn btn-p btn-sm" onclick="addAmbiguous()">추가</button>
+      </div>
+      <div class="dvd"></div>
       <button class="btn btn-o" onclick="clearData()" style="color:var(--red);border-color:var(--red)">로컬 데이터 초기화</button>
     </div>
     <div class="mf">
@@ -370,7 +377,10 @@ const RULES=[
   [/꽃집|flower|선물|gift/i,'선물','선물'],
 ];
 
-let S={tx:[],pending:[],corr:{},memos:{},cfg:{},gTok:null,charts:{},tab:'krw',person:'전체'};
+let S={tx:[],pending:[],corr:{},memos:{},cfg:{},gTok:null,charts:{},tab:'krw',person:'전체',
+  // 개별처리 가맹점: 카테고리 변경 시 다른 행에 일괄 적용 안 하고 규칙도 저장 안 함
+  ambiguous:['grab']
+};
 let F={sn:null,so:null,hc:[]};
 
 function init(){
@@ -378,6 +388,7 @@ function init(){
   try{S.corr=JSON.parse(localStorage.getItem('exp_corr')||'{}');}catch(e){}
   try{S.memos=JSON.parse(localStorage.getItem('exp_memos')||'{}');}catch(e){}
   try{S.tx=JSON.parse(localStorage.getItem('exp_tx')||'[]');}catch(e){}
+  try{const a=JSON.parse(localStorage.getItem('exp_ambiguous')||'null');if(a)S.ambiguous=a;}catch(e){}
   if(S.cfg.ak)document.getElementById('set-ak').value=S.cfg.ak;
   if(S.cfg.cid)document.getElementById('set-cid').value=S.cfg.cid;
   if(S.cfg.sid)document.getElementById('set-sid').value=S.cfg.sid;
@@ -593,10 +604,23 @@ function classify(merchant){
 }
 function saveCorr(merchant,cat,sub){
   const key=mkey(merchant);
-  // Validate before saving
+  if(isAmbiguous(key))return; // 개별처리 가맹점은 규칙 저장 안 함
   const safeSub=normSub(cat,sub);
   S.corr[key]={category:cat,subcategory:safeSub};
   localStorage.setItem('exp_corr',JSON.stringify(S.corr));
+}
+
+// 개별처리 가맹점 여부 확인
+function isAmbiguous(key){
+  return S.ambiguous.some(a=>key.includes(a)||a.includes(key.substring(0,4)));
+}
+
+// 개별처리 가맹점 추가/제거
+function toggleAmbiguous(merchant){
+  const key=mkey(merchant).substring(0,10);
+  const idx=S.ambiguous.indexOf(key);
+  if(idx===-1){S.ambiguous.push(key);}else{S.ambiguous.splice(idx,1);}
+  localStorage.setItem('exp_ambiguous',JSON.stringify(S.ambiguous));
 }
 function saveMemo(merchant,memo){
   const key=mkey(merchant);
@@ -627,17 +651,19 @@ function filterRv(){
 function renderRvTable(list){
   const tb=document.getElementById('rv-tbody');
   if(!list.length){tb.innerHTML='<tr><td colspan="7" class="no-data">없음</td></tr>';return;}
-  tb.innerHTML=list.map(t=>`
+  tb.innerHTML=list.map(t=>{
+  const amb=isAmbiguous(mkey(t.merchant));
+  return`
     <tr class="${t.isManual?'corr':''}" data-id="${t.id}">
       <td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.date}</td>
       <td><span class="badge ${t.source==='hyundai'?'b':'g'}" style="font-size:10px">${t.source==='hyundai'?'현대':'SHB'}</span></td>
       <td><select class="cs" style="width:60px" onchange="updPerson('${t.id}',this.value)"><option value="남편" ${(t.person||'남편')==='남편'?'selected':''}>남편</option><option value="아내" ${t.person==='아내'?'selected':''}>아내</option></select></td>
-      <td class="txm" title="${t.merchant}">${t.merchant}</td>
+      <td class="txm" title="${t.merchant}">${t.merchant}${amb?` <span title="개별처리 가맹점 — 변경이 다른 행에 적용되지 않습니다" style="cursor:help;color:var(--orange);font-size:11px">⚡</span>`:''}</td>
       <td class="txa">${fmt(t.amount)} <span style="color:var(--muted);font-weight:400;font-size:11px">${t.currency}</span></td>
       <td>${csel(t.id,'cat',t.category)}</td>
       <td>${csel(t.id,'sub',t.subcategory,t.category)}</td>
       <td><input type="text" value="${t.memo||''}" placeholder="메모" style="border:1.5px solid var(--border);border-radius:6px;padding:4px 7px;font-size:12px;width:85px;font-family:inherit" onchange="updateMemo('${t.id}',this.value)"></td>
-    </tr>`).join('');
+    </tr>`;}).join('');
 }
 function csel(id,type,cur,par=''){
   if(type==='cat'){const opts=Object.keys(CATS).map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');return `<select class="cs" onchange="updCat('${id}','cat',this.value)">${opts}</select>`;}
@@ -648,18 +674,18 @@ function csel(id,type,cur,par=''){
 }
 function updCat(id,type,val){
   const t=S.pending.find(t=>t.id===id);if(!t)return;
+  const amb=isAmbiguous(mkey(t.merchant));
   if(type==='cat'){
     t.category=val;t.subcategory=CATS[val]?.[0]||'기타';t.isManual=true;
-    // Apply to all same-merchant rows in pending
-    S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.category=val;p.subcategory=t.subcategory;p.isManual=true;});
+    // 개별처리 가맹점이면 일괄 적용 건너뜀
+    if(!amb) S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.category=val;p.subcategory=t.subcategory;p.isManual=true;});
     const row=document.querySelector(`tr[data-id="${id}"]`);
     if(row){row.querySelectorAll('td')[5].innerHTML=csel(id,'sub',t.subcategory,val);row.classList.add('corr');}
-    // Re-render to reflect changes in other rows
     renderRvTable(rvView);
-    saveCorr(t.merchant,val,t.subcategory);
+    saveCorr(t.merchant,val,t.subcategory); // isAmbiguous면 내부에서 skip
   }else{
     t.subcategory=val;t.isManual=true;
-    S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.subcategory=val;p.isManual=true;});
+    if(!amb) S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.subcategory=val;p.isManual=true;});
     renderRvTable(rvView);
     saveCorr(t.merchant,t.category,val);
   }
@@ -973,7 +999,33 @@ const getMonths=()=>[...new Set(S.tx.map(t=>t.date.substring(0,7)))].sort();
 const fmt=n=>Number(n).toLocaleString('ko-KR');
 function fmtK(n){if(n>=1e8)return(n/1e8).toFixed(1)+'억';if(n>=1e4)return Math.round(n/1e4).toLocaleString('ko-KR')+'만';return Math.round(n).toLocaleString('ko-KR');}
 function openImport(){F={sn:null,so:null,hc:[]};['dz-sn','dz-so','dz-hc'].forEach(id=>document.getElementById(id).classList.remove('has'));['fn-sn','fn-so','fn-hc'].forEach(id=>document.getElementById(id).textContent='');document.getElementById('parse-st').textContent='';document.getElementById('parse-btn').disabled=true;document.getElementById('mod-import').classList.add('open');}
-function openSettings(){document.getElementById('mod-settings').classList.add('open');}
+function openSettings(){
+  document.getElementById('mod-settings').classList.add('open');
+  renderAmbList();
+}
+function renderAmbList(){
+  const el=document.getElementById('amb-list');
+  if(!el)return;
+  el.innerHTML=S.ambiguous.map(a=>`
+    <span style="display:inline-flex;align-items:center;gap:5px;background:#FFF3E0;border:1px solid #FFD180;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;color:#E65100">
+      ⚡ ${a}
+      <button onclick="removeAmbiguous('${a}')" style="background:none;border:none;cursor:pointer;font-size:14px;color:#E65100;line-height:1;padding:0">×</button>
+    </span>`).join('');
+}
+function addAmbiguous(){
+  const val=document.getElementById('amb-input').value.trim().toLowerCase();
+  if(!val)return;
+  const key=val.replace(/[^a-z0-9가-힣]/g,'').substring(0,10);
+  if(!S.ambiguous.includes(key))S.ambiguous.push(key);
+  localStorage.setItem('exp_ambiguous',JSON.stringify(S.ambiguous));
+  document.getElementById('amb-input').value='';
+  renderAmbList();
+}
+function removeAmbiguous(key){
+  S.ambiguous=S.ambiguous.filter(a=>a!==key);
+  localStorage.setItem('exp_ambiguous',JSON.stringify(S.ambiguous));
+  renderAmbList();
+}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function toggleExp(){document.getElementById('exp-menu').classList.toggle('open');}
 document.addEventListener('click',e=>{if(!e.target.closest('.exp-wrap'))document.getElementById('exp-menu').classList.remove('open');});
