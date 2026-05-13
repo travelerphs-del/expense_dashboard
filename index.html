@@ -100,6 +100,10 @@ select.cs:focus{outline:none;border-color:var(--accent)}
 .badge.b{background:#EEF1FF;color:var(--accent)}.badge.g{background:#E6F9F2;color:#1BA97B}
 .no-data{text-align:center;padding:28px;color:var(--muted);font-size:13px}
 .dvd{height:1px;background:var(--border);margin:14px 0}
+.person-bar{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:3px}
+.ptab{padding:5px 14px;border:none;background:none;border-radius:6px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s;white-space:nowrap}
+.ptab.active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.ptab.h{color:#5168C8}.ptab.w{color:#D94F8A}
 @media(max-width:900px){.dgrid{grid-template-columns:1fr}.sum-grid{grid-template-columns:1fr 1fr}.wrap{padding:14px 12px 40px}.nav-logo span{display:none}.ig{grid-template-columns:1fr}}
 @media(max-width:500px){.sum-grid{grid-template-columns:1fr}}
 </style>
@@ -108,6 +112,11 @@ select.cs:focus{outline:none;border-color:var(--accent)}
 
 <nav>
   <div class="nav-logo">💳 지출 대시보드 <span>SHB · 현대카드</span></div>
+  <div class="person-bar">
+    <button class="ptab active" id="pt-전체" onclick="setPerson('전체',this)">전체</button>
+    <button class="ptab h" id="pt-남편" onclick="setPerson('남편',this)">👨 남편</button>
+    <button class="ptab w" id="pt-아내" onclick="setPerson('아내',this)">👩 아내</button>
+  </div>
   <span id="sh-status" class="cs-dot off" style="font-size:11px"><span class="dot gr"></span>Sheets</span>
   <button class="btn btn-o btn-sm" onclick="openTxList()">📋 거래내역</button>
   <button class="btn btn-p btn-sm" onclick="openImport()">📥 가져오기</button>
@@ -224,7 +233,7 @@ select.cs:focus{outline:none;border-color:var(--accent)}
       </div>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>날짜</th><th>출처</th><th>가맹점/수취인</th><th>금액</th><th>카테고리</th><th>서브</th><th>메모</th></tr></thead>
+          <thead><tr><th>날짜</th><th>출처</th><th>사용자</th><th>가맹점/수취인</th><th>금액</th><th>카테고리</th><th>서브</th><th>메모</th></tr></thead>
           <tbody id="rv-tbody"></tbody>
         </table>
       </div>
@@ -294,7 +303,7 @@ select.cs:focus{outline:none;border-color:var(--accent)}
       </div>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>날짜</th><th>출처</th><th>가맹점/수취인</th><th>금액</th><th>카테고리</th><th>서브</th><th>메모</th><th></th></tr></thead>
+          <thead><tr><th>날짜</th><th>출처</th><th>사용자</th><th>가맹점/수취인</th><th>금액</th><th>카테고리</th><th>서브</th><th>메모</th><th></th></tr></thead>
           <tbody id="tl-tbody"></tbody>
         </table>
       </div>
@@ -307,7 +316,18 @@ select.cs:focus{outline:none;border-color:var(--accent)}
 </div>
 
 <script>
-const CATS={생활:['외식','장보기','배달음식','커피','디저트'],여행:['국내','국외'],교육:['학원','교재'],건강:['병원','약국','운동'],교통:['교통'],즐거움:['쇼핑','술','취미'],정기구독:['정기구독'],선물:['선물'],기타:['기타']};
+const CATS={
+  '생활':['외식','장보기','배달음식','커피 및 차','간식'],
+  '국내여행':['숙박','식사','교통','쇼핑','입장권','기타'],
+  '해외여행':['숙박','식사','교통','쇼핑','입장권','기타'],
+  '교육':['자기계발','아이학원','아이교재'],
+  '건강':['병원','약국','운동'],
+  '교통':['대중교통','택시'],
+  '즐거움':['게임','자전거','쇼핑','술','기타 취미'],
+  '정기구독':['정기구독'],
+  '선물':['선물'],
+  '기타':['기타']
+};
 const RULES=[
   [/netflix|넷플릭스/i,'정기구독','정기구독'],
   [/youtube.*premium|YouTubePremium/i,'정기구독','정기구독'],
@@ -315,29 +335,42 @@ const RULES=[
   [/google\s*(cloud|one|workspace)|구글/i,'정기구독','정기구독'],
   [/라프텔|리디|밀리|왓챠|웨이브/i,'정기구독','정기구독'],
   [/chatgpt|openai|anthropic|claude/i,'정기구독','정기구독'],
-  [/grab/i,'교통','교통'],
-  [/카카오.*모빌리티|카카오T|KTX|SRT/i,'교통','교통'],
-  [/인천공항|면세점|duty.?free|대한항공|KOREAN.?AIR|hotel.*shilla/i,'여행','국외'],
-  [/hotel|resort|호텔|리조트|airbnb/i,'여행','국외'],
-  [/제주항공|진에어|에어서울/i,'여행','국내'],
+  // 교통
+  [/grab/i,'교통','택시'],
+  [/카카오.*모빌리티|카카오T|uber/i,'교통','택시'],
+  [/KTX|SRT|지하철|버스|전철/i,'교통','대중교통'],
+  // 해외여행
+  [/인천공항|면세점|duty.?free|대한항공|KOREAN.?AIR|hotel.*shilla/i,'해외여행','기타'],
+  [/hotel|resort|호텔|리조트|airbnb/i,'해외여행','숙박'],
+  [/제주항공|진에어|에어서울|아시아나|항공/i,'국내여행','기타'],
+  // 생활 - 장보기
   [/ANNAM|GOURMET|WINMART|LOTTE.?MART|롯데마트|이마트|홈플러스|minimart|K.?MARKET|QUANG.?BA|supermarket/i,'생활','장보기'],
+  // 생활 - 외식
   [/bistro|sushi|ramen|pizza|burger|mcdonalds|맥도날드|버거킹|KFC|lotteria|JOMA|ONKEL|LOTUS.GARDEN|ICHIBANYA|YUTAKA|오마카세/i,'생활','외식'],
   [/식당|밥집|포장마차|국밥|삼겹살|restaurant/i,'생활','외식'],
-  [/cafe|카페|coffee|커피|starbucks|스타벅스|KOI|STILL.COLOR|THREE.SPOONS/i,'생활','커피'],
-  [/bakery|베이커리|bread|LAGUNA|JOKSIN|SOCOLA|디저트|BREAD.FACTORY|VOLLKORN/i,'생활','디저트'],
+  // 생활 - 커피 및 차
+  [/cafe|카페|coffee|커피|starbucks|스타벅스|KOI|STILL.COLOR|THREE.SPOONS/i,'생활','커피 및 차'],
+  // 생활 - 간식
+  [/bakery|베이커리|bread|LAGUNA|JOKSIN|SOCOLA|BREAD.FACTORY|VOLLKORN|디저트|dessert|아이스크림/i,'생활','간식'],
+  // 건강
   [/PHARMACITY|약국|pharmacy|DUOC.PHAM|TAY.DUC|NURY.PHARM/i,'건강','약국'],
   [/병원|hospital|clinic|의원|치과|한의원/i,'건강','병원'],
   [/헬스|gym|fitness|필라테스|yoga/i,'건강','운동'],
-  [/BOOKWORM|교보문고|알라딘|yes24/i,'교육','교재'],
-  [/학원|academy/i,'교육','학원'],
+  // 교육
+  [/BOOKWORM|교보문고|알라딘|yes24/i,'교육','자기계발'],
+  [/학원|academy/i,'교육','아이학원'],
+  // 즐거움
+  [/게임|game|steam|nintendo|플스|xbox/i,'즐거움','게임'],
+  [/자전거|bike|cycling/i,'즐거움','자전거'],
   [/LOTTE.MALL|롯데몰|백화점|신세계|MALL|BOTTEGA|UNIS|현대카드M몰/i,'즐거움','쇼핑'],
   [/쿠팡|11번가|G마켓|옥션/i,'즐거움','쇼핑'],
   [/GS25|CU|세븐일레븐|편의점|술집|호프/i,'즐거움','술'],
-  [/영화|CGV|롯데시네마|메가박스|게임|콘서트|공연|전시/i,'즐거움','취미'],
+  [/영화|CGV|롯데시네마|메가박스|콘서트|공연|전시/i,'즐거움','기타 취미'],
+  // 선물
   [/꽃집|flower|선물|gift/i,'선물','선물'],
 ];
 
-let S={tx:[],pending:[],corr:{},memos:{},cfg:{},gTok:null,charts:{},tab:'krw'};
+let S={tx:[],pending:[],corr:{},memos:{},cfg:{},gTok:null,charts:{},tab:'krw',person:'전체'};
 let F={sn:null,so:null,hc:[]};
 
 function init(){
@@ -442,7 +475,7 @@ async function parseSHB(newFile,oldFile){
       const date=fmtDate(String(r[cDate]||''));
       const amount=pn(r[cDebit]);
       if(amount<=0)return;
-      txs.push({id:`SHB_DC_${date}_${merchant}_${amount}`.replace(/\s/g,'_'),date,merchant,amount,currency:'VND',card:'SHB 체크카드',source:'shb',txType:'Debit Card'});
+      txs.push({id:`SHB_DC_${date}_${merchant}_${amount}`.replace(/\s/g,'_'),date,merchant,amount,currency:'VND',card:'SHB 체크카드',person:'남편',source:'shb',txType:'Debit Card'});
     });
   }
 
@@ -472,7 +505,7 @@ async function parseSHB(newFile,oldFile){
         if(notesClean&&notesClean.length>3&&!/^[\d\s\/]+$/.test(notesClean))merchant=notesClean.substring(0,50);
       }
       merchant=merchant||'알 수 없음';
-      txs.push({id:`SHB_TR_${date}_${merchant}_${amtNew}_${i}`.replace(/\s/g,'_'),date,merchant,amount:amtNew,currency:'VND',card:'SHB',source:'shb',txType:'Transfer'});
+      txs.push({id:`SHB_TR_${date}_${merchant}_${amtNew}_${i}`.replace(/\s/g,'_'),date,merchant,amount:amtNew,currency:'VND',card:'SHB',person:'남편',source:'shb',txType:'Transfer'});
     }
   } else if(newTransfer.length&&!oldRows.length){
     // Only new file
@@ -482,7 +515,7 @@ async function parseSHB(newFile,oldFile){
       const date=fmtDate(String(r[cDate]||''));
       const amount=pn(r[cDebit]);
       if(amount<=0)return;
-      txs.push({id:`SHB_TR_${date}_${merchant}_${amount}_${i}`.replace(/\s/g,'_'),date,merchant,amount,currency:'VND',card:'SHB',source:'shb',txType:'Transfer'});
+      txs.push({id:`SHB_TR_${date}_${merchant}_${amount}_${i}`.replace(/\s/g,'_'),date,merchant,amount,currency:'VND',card:'SHB',person:'남편',source:'shb',txType:'Transfer'});
     });
   } else if(!newRows.length&&oldRows.length){
     // Only old file — no dates
@@ -493,7 +526,7 @@ async function parseSHB(newFile,oldFile){
       if(amount<=0)return;
       const refRaw=String(r[cRef]||'');
       const merchant=(refRaw.includes('\\n')?refRaw.split('\\n').pop():refRaw.split('\n').pop()).trim()||'알 수 없음';
-      txs.push({id:`SHB_OLD_${fm}_${merchant}_${amount}_${i}`.replace(/\s/g,'_'),date:fm,merchant,amount,currency:'VND',card:'SHB',source:'shb',txType:'Transfer'});
+      txs.push({id:`SHB_OLD_${fm}_${merchant}_${amount}_${i}`.replace(/\s/g,'_'),date:fm,merchant,amount,currency:'VND',card:'SHB',person:'남편',source:'shb',txType:'Transfer'});
     });
   }
 
@@ -521,26 +554,48 @@ async function parseHyundai(file){
     const merchant=(cells[mi]||'').replace(/,VND:[\d.]+/,'').trim();
     const amount=parseFloat((cells[ai]||'0').replace(/,/g,''))||0;
     if(amount<=0||!merchant)return;
-    txs.push({id:`HC_${date}_${merchant}_${amount}`.replace(/\s/g,'_'),date,merchant,amount,currency:'KRW',card:(cells[ci]||'').replace(/^본인\s*/,''),source:'hyundai'});
+    const rawCard=cells[ci]||'';
+    const person=rawCard.includes('아내')?'아내':'남편';
+    const card=rawCard.replace(/^본인\s*/,'').replace(/^아내\s*/,'');
+    txs.push({id:`HC_${date}_${merchant}_${amount}`.replace(/\s/g,'_'),date,merchant,amount,currency:'KRW',card,person,source:'hyundai'});
   });
   return txs;
 }
 
 // ── CLASSIFY ───────────────────────────────────────
 function mkey(merchant){return merchant.toLowerCase().replace(/[^a-z0-9가-힣]/g,'').substring(0,20);}
+
+// Ensure subcategory is valid for the given category; fallback to first valid sub
+function normSub(cat,sub){
+  const subs=CATS[cat];
+  if(!subs)return '기타';
+  return subs.includes(sub)?sub:subs[0];
+}
+
 function classify(merchant){
   const key=mkey(merchant);
-  const catResult=S.corr[key]?{...S.corr[key],isManual:true}:
-    (()=>{for(const[k,v]of Object.entries(S.corr)){if(k.length>=4&&(key.includes(k)||k.includes(key.substring(0,6))))return{...v,isManual:false};}
+  let catResult;
+  if(S.corr[key]){
+    catResult={...S.corr[key],isManual:true};
+  } else {
+    catResult=(()=>{
+      for(const[k,v]of Object.entries(S.corr)){
+        if(k.length>=4&&(key.includes(k)||k.includes(key.substring(0,6))))return{...v,isManual:false};
+      }
       for(const[re,cat,sub]of RULES){if(re.test(merchant))return{category:cat,subcategory:sub};}
-      return{category:'기타',subcategory:'기타'};})();
-  // Attach saved memo if exists
+      return{category:'기타',subcategory:'기타'};
+    })();
+  }
+  // Always validate subcategory matches category
+  catResult.subcategory=normSub(catResult.category,catResult.subcategory);
   const savedMemo=S.memos[key]||'';
   return{...catResult,memo:savedMemo};
 }
 function saveCorr(merchant,cat,sub){
   const key=mkey(merchant);
-  S.corr[key]={category:cat,subcategory:sub};
+  // Validate before saving
+  const safeSub=normSub(cat,sub);
+  S.corr[key]={category:cat,subcategory:safeSub};
   localStorage.setItem('exp_corr',JSON.stringify(S.corr));
 }
 function saveMemo(merchant,memo){
@@ -576,6 +631,7 @@ function renderRvTable(list){
     <tr class="${t.isManual?'corr':''}" data-id="${t.id}">
       <td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.date}</td>
       <td><span class="badge ${t.source==='hyundai'?'b':'g'}" style="font-size:10px">${t.source==='hyundai'?'현대':'SHB'}</span></td>
+      <td><select class="cs" style="width:60px" onchange="updPerson('${t.id}',this.value)"><option value="남편" ${(t.person||'남편')==='남편'?'selected':''}>남편</option><option value="아내" ${t.person==='아내'?'selected':''}>아내</option></select></td>
       <td class="txm" title="${t.merchant}">${t.merchant}</td>
       <td class="txa">${fmt(t.amount)} <span style="color:var(--muted);font-weight:400;font-size:11px">${t.currency}</span></td>
       <td>${csel(t.id,'cat',t.category)}</td>
@@ -586,7 +642,8 @@ function renderRvTable(list){
 function csel(id,type,cur,par=''){
   if(type==='cat'){const opts=Object.keys(CATS).map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');return `<select class="cs" onchange="updCat('${id}','cat',this.value)">${opts}</select>`;}
   const subs=CATS[par]||['기타'];
-  const opts=subs.map(s=>`<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
+  const safeCur=subs.includes(cur)?cur:subs[0]; // normalize: invalid sub → first valid
+  const opts=subs.map(s=>`<option value="${s}" ${s===safeCur?'selected':''}>${s}</option>`).join('');
   return `<select class="cs" onchange="updCat('${id}','sub',this.value)">${opts}</select>`;
 }
 function updCat(id,type,val){
@@ -611,10 +668,12 @@ function updateMemo(id,val){
   const t=S.pending.find(t=>t.id===id);
   if(!t)return;
   t.memo=val;
-  // Apply same memo to all pending rows with same merchant
   S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>p.memo=val);
-  // Save memo rule for future imports
   saveMemo(t.merchant,val);
+}
+function updPerson(id,val){
+  const t=S.pending.find(t=>t.id===id);
+  if(t)t.person=val;
 }
 function confirmRv(){
   S.tx=[...S.tx,...S.pending];S.pending=[];F={sn:null,so:null,hc:[]};
@@ -628,7 +687,7 @@ function confirmRv(){
 function renderDash(){renderSum();renderMonChart();renderCatChart();renderLastMonth();if(S.cfg.ak)refreshInsights();else renderStaticInsights();}
 
 function renderSum(){
-  const krw=S.tx.filter(t=>t.currency==='KRW'),vnd=S.tx.filter(t=>t.currency==='VND');
+  const krw=getTx('KRW'),vnd=getTx('VND');
   const months=getMonths(),lm=months[months.length-1]||'',pm=months[months.length-2]||'';
   const tot=sum(krw),totV=sum(vnd);
   const thisM=sum(krw.filter(t=>t.date.startsWith(lm))),prevM=sum(krw.filter(t=>t.date.startsWith(pm)));
@@ -644,7 +703,7 @@ function renderSum(){
 }
 
 function renderMonChart(){
-  const txs=S.tx.filter(t=>t.currency===(S.tab==='krw'?'KRW':'VND'));
+  const txs=getTx(S.tab==='krw'?'KRW':'VND');
   const months=getMonths();
   const data=months.map(m=>sum(txs.filter(t=>t.date.startsWith(m))));
   const ctx=document.getElementById('c-mon');
@@ -656,7 +715,7 @@ function renderMonChart(){
 function switchTab(tab,btn){S.tab=tab;document.querySelectorAll('.tabs .tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderMonChart();}
 
 function renderCatChart(){
-  const krw=S.tx.filter(t=>t.currency==='KRW'),months=getMonths().slice(-6);
+  const krw=getTx('KRW'),months=getMonths().slice(-6);
   const colors=['#6B7FD7','#2ECC8A','#F09E4B','#E85757','#A88CFF','#3ABDE8','#FF8C69','#66D9C2'];
   const datasets=Object.keys(CATS).filter(c=>c!=='기타').map((cat,i)=>({label:cat,data:months.map(m=>sum(krw.filter(t=>t.date.startsWith(m)&&t.category===cat))),backgroundColor:colors[i%colors.length],borderRadius:4,stack:'s'})).filter(d=>d.data.some(v=>v>0));
   const ctx=document.getElementById('c-cat');
@@ -670,7 +729,7 @@ function renderLastMonth(){
   const months=getMonths();if(!months.length)return;
   const lm=months[months.length-1],pm=months[months.length-2]||'';
   document.getElementById('lm-badge').textContent=lm.slice(2).replace('-','/');
-  const krw=S.tx.filter(t=>t.currency==='KRW');
+  const krw=getTx('KRW');
   const cats=Object.keys(CATS).map(c=>({cat:c,val:sum(krw.filter(t=>t.date.startsWith(lm)&&t.category===c))})).filter(x=>x.val>0).sort((a,b)=>b.val-a.val);
   if(!cats.length){document.getElementById('lm-bars').innerHTML='<div class="no-data">해당 월 데이터 없음</div>';return;}
   const maxV=cats[0].val;
@@ -711,15 +770,16 @@ async function refreshInsights(){
   }catch(e){document.getElementById('ai-box').innerHTML=`<p class="itext" style="color:var(--red)">오류: ${e.message}</p>`;}
 }
 function buildCtx(){
-  const months=getMonths(),krw=S.tx.filter(t=>t.currency==='KRW'),lm=months[months.length-1]||'';
-  return[`기간: ${months[0]||''} ~ ${lm}`,`총 거래: ${krw.length}건`,
+  const months=getMonths(),krw=getTx('KRW'),lm=months[months.length-1]||'';
+  const personLabel=S.person==='전체'?'전체':S.person;
+  return[`기간: ${months[0]||''} ~ ${lm}  [${personLabel}]`,`총 거래: ${krw.length}건`,
     ...months.slice(-6).map(m=>`${m}: ${fmtK(sum(krw.filter(t=>t.date.startsWith(m))))}`),
     '지난달 카테고리:',
     ...Object.keys(CATS).map(c=>{const v=sum(krw.filter(t=>t.date.startsWith(lm)&&t.category===c));return v>0?`  ${c}: ${fmtK(v)}`:null;}).filter(Boolean)
   ].join('\n');
 }
 function renderStaticInsights(){
-  const krw=S.tx.filter(t=>t.currency==='KRW');if(!krw.length)return;
+  const krw=getTx('KRW');if(!krw.length)return;
   const months=getMonths(),lm=months[months.length-1]||'';
   const top=Object.keys(CATS).map(c=>({cat:c,val:sum(krw.filter(t=>t.date.startsWith(lm)&&t.category===c))})).filter(x=>x.val>0).sort((a,b)=>b.val-a.val)[0];
   const sub=sum(krw.filter(t=>t.date.startsWith(lm)&&t.category==='정기구독'));
@@ -768,8 +828,8 @@ async function loadSheets(sid){
 }
 async function syncSheets(){
   const sid=S.cfg.sid;if(!S.gTok||!sid)return;
-  const rows=S.tx.map(t=>[t.id,t.date,t.source||'',t.merchant||'',t.amount,t.currency||'',t.card||'',t.category||'',t.subcategory||'',t.memo||'']);
-  await shReq('PUT',`https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/transactions!A1?valueInputOption=RAW`,{values:[['id','date','source','merchant','amount','currency','card','category','subcategory','memo'],...rows]});
+  const rows=S.tx.map(t=>[t.id,t.date,t.source||'',t.person||'남편',t.merchant||'',t.amount,t.currency||'',t.card||'',t.category||'',t.subcategory||'',t.memo||'']);
+  await shReq('PUT',`https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/transactions!A1?valueInputOption=RAW`,{values:[['id','date','source','person','merchant','amount','currency','card','category','subcategory','memo'],...rows]});
   const cr=Object.entries(S.corr).map(([k,v])=>[k,v.category,v.subcategory]);
   await shReq('PUT',`https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/category_rules!A1?valueInputOption=RAW`,{values:[['key','category','subcategory'],...cr]});
 }
@@ -782,7 +842,10 @@ async function shReq(method,url,body){
 function exportExcel(){
   toggleExp();if(!S.tx.length){alert('데이터 없음');return;}
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['날짜','카드','가맹점','금액','통화','카테고리','서브카테고리','메모'],...S.tx.map(t=>[t.date,t.card||'',t.merchant,t.amount,t.currency,t.category||'',t.subcategory||'',t.memo||''])]),'거래내역');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
+    ['날짜','사용자','카드','가맹점','금액','통화','카테고리','서브카테고리','메모'],
+    ...S.tx.map(t=>[t.date,t.person||'',t.card||'',t.merchant,t.amount,t.currency,t.category||'',t.subcategory||'',t.memo||''])
+  ]),'거래내역');
   const months=getMonths(),krw=S.tx.filter(t=>t.currency==='KRW');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['월',...Object.keys(CATS),'합계'],...months.map(m=>{const row=[m,...Object.keys(CATS).map(c=>sum(krw.filter(t=>t.date.startsWith(m)&&t.category===c)))];row.push(row.slice(1).reduce((a,b)=>a+b,0));return row;})]),'월별요약');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['키','카테고리','서브카테고리'],...Object.entries(S.corr).map(([k,v])=>[k,v.category,v.subcategory])]),'카테고리규칙');
@@ -792,7 +855,7 @@ function exportPDF(){
   toggleExp();const{jsPDF}=window.jspdf;const doc=new jsPDF();
   doc.setFontSize(18);doc.setFont(undefined,'bold');doc.text('Expense Report',14,22);
   doc.setFontSize(10);doc.setFont(undefined,'normal');
-  const months=getMonths(),krw=S.tx.filter(t=>t.currency==='KRW'),vnd=S.tx.filter(t=>t.currency==='VND'),lm=months[months.length-1]||'';
+  const months=getMonths(),krw=getTx('KRW'),vnd=getTx('VND'),lm=months[months.length-1]||'';
   doc.text(`Period: ${months[0]||''} ~ ${lm}  |  KRW: ${fmtK(sum(krw))}  |  VND: ${fmtK(sum(vnd))}`,14,30);
   doc.autoTable({startY:36,head:[['Category',`${lm} (KRW)`]],body:Object.keys(CATS).map(c=>{const v=sum(krw.filter(t=>t.date.startsWith(lm)&&t.category===c));return v>0?[c,fmtK(v)]:null;}).filter(Boolean),headStyles:{fillColor:[81,104,200]},styles:{fontSize:10}});
   const top=krw.filter(t=>t.date.startsWith(lm)).sort((a,b)=>b.amount-a.amount).slice(0,10);
@@ -846,6 +909,7 @@ function renderTlTable(list){
     <tr data-id="${t.id}">
       <td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.date}</td>
       <td><span class="badge ${t.source==='hyundai'?'b':'g'}" style="font-size:10px">${t.source==='hyundai'?'현대':'SHB'}</span></td>
+      <td><select class="cs" style="width:60px" onchange="tlPerson('${t.id}',this.value)"><option value="남편" ${(t.person||'남편')==='남편'?'selected':''}>남편</option><option value="아내" ${t.person==='아내'?'selected':''}>아내</option></select></td>
       <td class="txm" title="${t.merchant}">${t.merchant}</td>
       <td class="txa">${fmt(t.amount)} <span style="color:var(--muted);font-weight:400;font-size:11px">${t.currency}</span></td>
       <td>${tlCsel(t.id,'cat',t.category)}</td>
@@ -857,7 +921,8 @@ function renderTlTable(list){
 function tlCsel(id,type,cur,par=''){
   if(type==='cat'){const opts=Object.keys(CATS).map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');return `<select class="cs" onchange="tlUpdCat('${id}','cat',this.value)">${opts}</select>`;}
   const subs=CATS[par]||['기타'];
-  const opts=subs.map(s=>`<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
+  const safeCur=subs.includes(cur)?cur:subs[0]; // normalize: invalid sub → first valid
+  const opts=subs.map(s=>`<option value="${s}" ${s===safeCur?'selected':''}>${s}</option>`).join('');
   return `<select class="cs" onchange="tlUpdCat('${id}','sub',this.value)">${opts}</select>`;
 }
 function tlUpdCat(id,type,val){
@@ -876,6 +941,12 @@ function tlMemo(id,val){
   saveMemo(t.merchant,val);
   localStorage.setItem('exp_tx',JSON.stringify(S.tx));
 }
+function tlPerson(id,val){
+  const t=S.tx.find(t=>t.id===id);if(!t)return;
+  t.person=val;
+  localStorage.setItem('exp_tx',JSON.stringify(S.tx));
+  renderDash();
+}
 function deleteTx(id){
   if(!confirm('이 거래내역을 삭제하시겠습니까?'))return;
   S.tx=S.tx.filter(t=>t.id!==id);
@@ -885,6 +956,18 @@ function deleteTx(id){
 }
 
 // ── HELPERS ────────────────────────────────────────
+// Central data accessor — always applies person filter
+function getTx(currency=null){
+  let txs=S.person==='전체'?[...S.tx]:S.tx.filter(t=>t.person===S.person);
+  if(currency)txs=txs.filter(t=>t.currency===currency);
+  return txs;
+}
+function setPerson(p,btn){
+  S.person=p;
+  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDash();
+}
 const sum=arr=>arr.reduce((a,t)=>a+(t.amount||0),0);
 const getMonths=()=>[...new Set(S.tx.map(t=>t.date.substring(0,7)))].sort();
 const fmt=n=>Number(n).toLocaleString('ko-KR');
