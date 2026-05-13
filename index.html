@@ -109,6 +109,7 @@ select.cs:focus{outline:none;border-color:var(--accent)}
 <nav>
   <div class="nav-logo">💳 지출 대시보드 <span>SHB · 현대카드</span></div>
   <span id="sh-status" class="cs-dot off" style="font-size:11px"><span class="dot gr"></span>Sheets</span>
+  <button class="btn btn-o btn-sm" onclick="openTxList()">📋 거래내역</button>
   <button class="btn btn-p btn-sm" onclick="openImport()">📥 가져오기</button>
   <div class="exp-wrap">
     <button class="btn btn-o btn-sm" onclick="toggleExp()">📤 내보내기 ▾</button>
@@ -274,6 +275,37 @@ select.cs:focus{outline:none;border-color:var(--accent)}
   </div>
 </div>
 
+<!-- TX LIST (saved transactions edit) -->
+<div class="overlay" id="mod-txlist">
+  <div class="modal modal-lg">
+    <div class="mh">
+      <div class="mt">📋 거래내역 수정</div>
+      <button class="mx" onclick="closeModal('mod-txlist')">×</button>
+    </div>
+    <div class="mb">
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <span id="tl-cnt" class="badge b"></span>
+        <input type="text" id="tl-q" placeholder="가맹점 검색..." style="flex:1;min-width:130px;border:1.5px solid var(--border);border-radius:8px;padding:6px 11px;font-size:13px;font-family:inherit" oninput="filterTl()">
+        <select id="tl-mon" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;font-family:inherit" onchange="filterTl()"><option value="">전체 월</option></select>
+        <select id="tl-cat" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;font-family:inherit" onchange="filterTl()"><option value="">전체 카테고리</option></select>
+        <select id="tl-src" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;font-family:inherit" onchange="filterTl()">
+          <option value="">전체</option><option value="shb">SHB</option><option value="hyundai">현대카드</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>날짜</th><th>출처</th><th>가맹점/수취인</th><th>금액</th><th>카테고리</th><th>서브</th><th>메모</th><th></th></tr></thead>
+          <tbody id="tl-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mf">
+      <span style="flex:1;font-size:11px;color:var(--muted)">수정 즉시 저장됩니다</span>
+      <button class="btn btn-p" onclick="closeModal('mod-txlist');if(S.gTok)syncSheets();">✅ 완료</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const CATS={생활:['외식','장보기','배달음식','커피','디저트'],여행:['국내','국외'],교육:['학원','교재'],건강:['병원','약국','운동'],교통:['교통'],즐거움:['쇼핑','술','취미'],정기구독:['정기구독'],선물:['선물'],기타:['기타']};
 const RULES=[
@@ -305,12 +337,13 @@ const RULES=[
   [/꽃집|flower|선물|gift/i,'선물','선물'],
 ];
 
-let S={tx:[],pending:[],corr:{},cfg:{},gTok:null,charts:{},tab:'krw'};
+let S={tx:[],pending:[],corr:{},memos:{},cfg:{},gTok:null,charts:{},tab:'krw'};
 let F={sn:null,so:null,hc:[]};
 
 function init(){
   try{S.cfg=JSON.parse(localStorage.getItem('exp_cfg')||'{}');}catch(e){}
   try{S.corr=JSON.parse(localStorage.getItem('exp_corr')||'{}');}catch(e){}
+  try{S.memos=JSON.parse(localStorage.getItem('exp_memos')||'{}');}catch(e){}
   try{S.tx=JSON.parse(localStorage.getItem('exp_tx')||'[]');}catch(e){}
   if(S.cfg.ak)document.getElementById('set-ak').value=S.cfg.ak;
   if(S.cfg.cid)document.getElementById('set-cid').value=S.cfg.cid;
@@ -494,17 +527,26 @@ async function parseHyundai(file){
 }
 
 // ── CLASSIFY ───────────────────────────────────────
+function mkey(merchant){return merchant.toLowerCase().replace(/[^a-z0-9가-힣]/g,'').substring(0,20);}
 function classify(merchant){
-  const key=merchant.toLowerCase().replace(/[^a-z0-9가-힣]/g,'').substring(0,20);
-  if(S.corr[key])return{...S.corr[key],isManual:true};
-  for(const[k,v]of Object.entries(S.corr)){if(k.length>=4&&(key.includes(k)||k.includes(key.substring(0,6))))return{...v,isManual:false};}
-  for(const[re,cat,sub]of RULES){if(re.test(merchant))return{category:cat,subcategory:sub};}
-  return{category:'기타',subcategory:'기타'};
+  const key=mkey(merchant);
+  const catResult=S.corr[key]?{...S.corr[key],isManual:true}:
+    (()=>{for(const[k,v]of Object.entries(S.corr)){if(k.length>=4&&(key.includes(k)||k.includes(key.substring(0,6))))return{...v,isManual:false};}
+      for(const[re,cat,sub]of RULES){if(re.test(merchant))return{category:cat,subcategory:sub};}
+      return{category:'기타',subcategory:'기타'};})();
+  // Attach saved memo if exists
+  const savedMemo=S.memos[key]||'';
+  return{...catResult,memo:savedMemo};
 }
 function saveCorr(merchant,cat,sub){
-  const key=merchant.toLowerCase().replace(/[^a-z0-9가-힣]/g,'').substring(0,20);
+  const key=mkey(merchant);
   S.corr[key]={category:cat,subcategory:sub};
   localStorage.setItem('exp_corr',JSON.stringify(S.corr));
+}
+function saveMemo(merchant,memo){
+  const key=mkey(merchant);
+  if(memo){S.memos[key]=memo;}else{delete S.memos[key];}
+  localStorage.setItem('exp_memos',JSON.stringify(S.memos));
 }
 
 // ── REVIEW ─────────────────────────────────────────
@@ -549,13 +591,31 @@ function csel(id,type,cur,par=''){
 }
 function updCat(id,type,val){
   const t=S.pending.find(t=>t.id===id);if(!t)return;
-  if(type==='cat'){t.category=val;t.subcategory=CATS[val]?.[0]||'기타';t.isManual=true;
+  if(type==='cat'){
+    t.category=val;t.subcategory=CATS[val]?.[0]||'기타';t.isManual=true;
+    // Apply to all same-merchant rows in pending
+    S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.category=val;p.subcategory=t.subcategory;p.isManual=true;});
     const row=document.querySelector(`tr[data-id="${id}"]`);
     if(row){row.querySelectorAll('td')[5].innerHTML=csel(id,'sub',t.subcategory,val);row.classList.add('corr');}
+    // Re-render to reflect changes in other rows
+    renderRvTable(rvView);
     saveCorr(t.merchant,val,t.subcategory);
-  }else{t.subcategory=val;t.isManual=true;const row=document.querySelector(`tr[data-id="${id}"]`);if(row)row.classList.add('corr');saveCorr(t.merchant,t.category,val);}
+  }else{
+    t.subcategory=val;t.isManual=true;
+    S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.subcategory=val;p.isManual=true;});
+    renderRvTable(rvView);
+    saveCorr(t.merchant,t.category,val);
+  }
 }
-function updateMemo(id,val){const t=S.pending.find(t=>t.id===id);if(t)t.memo=val;}
+function updateMemo(id,val){
+  const t=S.pending.find(t=>t.id===id);
+  if(!t)return;
+  t.memo=val;
+  // Apply same memo to all pending rows with same merchant
+  S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>p.memo=val);
+  // Save memo rule for future imports
+  saveMemo(t.merchant,val);
+}
 function confirmRv(){
   S.tx=[...S.tx,...S.pending];S.pending=[];F={sn:null,so:null,hc:[]};
   localStorage.setItem('exp_tx',JSON.stringify(S.tx));
@@ -749,6 +809,80 @@ function saveSettings(){
   closeModal('mod-settings');alert('저장됨');
 }
 function clearData(){if(!confirm('모든 로컬 데이터를 삭제하시겠습니까?'))return;['exp_tx','exp_corr','exp_cfg'].forEach(k=>localStorage.removeItem(k));location.reload();}
+
+// ── TX LIST (saved tx editor) ──────────────────────
+let tlView=[];
+function openTxList(){
+  // Populate filters
+  const monSel=document.getElementById('tl-mon');
+  monSel.innerHTML='<option value="">전체 월</option>';
+  getMonths().reverse().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m.slice(2).replace('-','/');monSel.appendChild(o);});
+  const catSel=document.getElementById('tl-cat');
+  catSel.innerHTML='<option value="">전체 카테고리</option>';
+  Object.keys(CATS).forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o);});
+  tlView=[...S.tx].sort((a,b)=>b.date.localeCompare(a.date));
+  document.getElementById('tl-cnt').textContent=`${tlView.length}건`;
+  renderTlTable(tlView);
+  document.getElementById('mod-txlist').classList.add('open');
+}
+function filterTl(){
+  const q=document.getElementById('tl-q').value.toLowerCase();
+  const mon=document.getElementById('tl-mon').value;
+  const cat=document.getElementById('tl-cat').value;
+  const src=document.getElementById('tl-src').value;
+  tlView=S.tx.filter(t=>
+    (!q||t.merchant.toLowerCase().includes(q))&&
+    (!mon||t.date.startsWith(mon))&&
+    (!cat||t.category===cat)&&
+    (!src||t.source===src)
+  ).sort((a,b)=>b.date.localeCompare(a.date));
+  document.getElementById('tl-cnt').textContent=`${tlView.length}건`;
+  renderTlTable(tlView);
+}
+function renderTlTable(list){
+  const tb=document.getElementById('tl-tbody');
+  if(!list.length){tb.innerHTML='<tr><td colspan="8" class="no-data">없음</td></tr>';return;}
+  tb.innerHTML=list.map(t=>`
+    <tr data-id="${t.id}">
+      <td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.date}</td>
+      <td><span class="badge ${t.source==='hyundai'?'b':'g'}" style="font-size:10px">${t.source==='hyundai'?'현대':'SHB'}</span></td>
+      <td class="txm" title="${t.merchant}">${t.merchant}</td>
+      <td class="txa">${fmt(t.amount)} <span style="color:var(--muted);font-weight:400;font-size:11px">${t.currency}</span></td>
+      <td>${tlCsel(t.id,'cat',t.category)}</td>
+      <td>${tlCsel(t.id,'sub',t.subcategory,t.category)}</td>
+      <td><input type="text" value="${t.memo||''}" placeholder="메모" style="border:1.5px solid var(--border);border-radius:6px;padding:4px 7px;font-size:12px;width:90px;font-family:inherit" onchange="tlMemo('${t.id}',this.value)"></td>
+      <td><button onclick="deleteTx('${t.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;padding:0 4px" title="삭제">🗑</button></td>
+    </tr>`).join('');
+}
+function tlCsel(id,type,cur,par=''){
+  if(type==='cat'){const opts=Object.keys(CATS).map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');return `<select class="cs" onchange="tlUpdCat('${id}','cat',this.value)">${opts}</select>`;}
+  const subs=CATS[par]||['기타'];
+  const opts=subs.map(s=>`<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
+  return `<select class="cs" onchange="tlUpdCat('${id}','sub',this.value)">${opts}</select>`;
+}
+function tlUpdCat(id,type,val){
+  const t=S.tx.find(t=>t.id===id);if(!t)return;
+  if(type==='cat'){t.category=val;t.subcategory=CATS[val]?.[0]||'기타';
+    const row=document.querySelector(`#tl-tbody tr[data-id="${id}"]`);
+    if(row){row.querySelectorAll('td')[5].innerHTML=tlCsel(id,'sub',t.subcategory,val);}
+    saveCorr(t.merchant,val,t.subcategory);
+  }else{t.subcategory=val;saveCorr(t.merchant,t.category,val);}
+  localStorage.setItem('exp_tx',JSON.stringify(S.tx));
+  renderDash();
+}
+function tlMemo(id,val){
+  const t=S.tx.find(t=>t.id===id);if(!t)return;
+  t.memo=val;
+  saveMemo(t.merchant,val);
+  localStorage.setItem('exp_tx',JSON.stringify(S.tx));
+}
+function deleteTx(id){
+  if(!confirm('이 거래내역을 삭제하시겠습니까?'))return;
+  S.tx=S.tx.filter(t=>t.id!==id);
+  localStorage.setItem('exp_tx',JSON.stringify(S.tx));
+  filterTl();
+  renderDash();
+}
 
 // ── HELPERS ────────────────────────────────────────
 const sum=arr=>arr.reduce((a,t)=>a+(t.amount||0),0);
