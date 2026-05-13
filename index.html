@@ -566,7 +566,7 @@ async function parseHyundai(file){
     const amount=parseFloat((cells[ai]||'0').replace(/,/g,''))||0;
     if(amount<=0||!merchant)return;
     const rawCard=cells[ci]||'';
-    const person=rawCard.includes('아내')?'아내':'남편';
+    const person=rawCard.includes('가족')?'아내':'남편';
     const card=rawCard.replace(/^본인\s*/,'').replace(/^아내\s*/,'');
     txs.push({id:`HC_${date}_${merchant}_${amount}`.replace(/\s/g,'_'),date,merchant,amount,currency:'KRW',card,person,source:'hyundai'});
   });
