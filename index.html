@@ -131,7 +131,12 @@ select.cs:focus{outline:none;border-color:var(--accent)}
   <button class="btn btn-o btn-sm" onclick="openSettings()">⚙️</button>
 </nav>
 
-<div class="wrap">
+<!-- AUTO-CONNECT BANNER -->
+<div id="connect-banner" style="display:none;background:#FFF8EC;border-bottom:1px solid #FFE4A0;padding:10px 24px;align-items:center;gap:12px;font-size:13px">
+  <span>☁️ <strong>저장된 데이터가 있습니다.</strong> Google Sheets에서 불러오려면 연결하세요.</span>
+  <button onclick="connectGoogle()" class="btn btn-p btn-sm">🔗 연결해서 불러오기</button>
+  <button onclick="hideBanner()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;margin-left:auto">×</button>
+</div>
   <div class="sum-grid" style="grid-template-columns:repeat(3,1fr)">
     <div class="stat"><div class="slabel">연간 누적 KRW</div><div class="sval" id="s-krw">—</div><div class="ssub" id="s-krw2"></div></div>
     <div class="stat"><div class="slabel">최근월 지출</div><div class="sval" id="s-mon">—</div><div class="ssub" id="s-mon2"></div></div>
@@ -401,7 +406,15 @@ function init(){
   if(S.cfg.cid)document.getElementById('set-cid').value=S.cfg.cid;
   if(S.cfg.sid)document.getElementById('set-sid').value=S.cfg.sid;
   if(S.tx.length)renderDash();
+  // Client ID 저장되어 있으면 자동 연결 배너 표시
+  if(S.cfg.cid&&S.cfg.sid){
+    setTimeout(()=>{
+      const b=document.getElementById('connect-banner');
+      if(b&&!S.gTok){b.style.display='flex';}
+    },800); // GIS 라이브러리 로드 대기
+  }
 }
+function hideBanner(){const b=document.getElementById('connect-banner');if(b)b.style.display='none';}
 
 // ── FILES ──────────────────────────────────────────
 function setF(slot,inp){
@@ -961,12 +974,26 @@ async function ensureSS(){
 async function loadSheets(sid){
   if(!S.gTok||!sid)return;
   try{
-    const r=await shReq('GET',`https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/transactions!A:J`);
+    // A:L covers up to 12 columns — future-proof
+    const r=await shReq('GET',`https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/transactions!A:L`);
     const rows=r.values||[];
-    if(rows.length>1){const h=rows[0];const loaded=rows.slice(1).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]||'');o.amount=parseFloat(o.amount)||0;return o;});
-      const ids=new Set(loaded.map(t=>t.id));S.tx=[...loaded,...S.tx.filter(t=>!ids.has(t.id))];localStorage.setItem('exp_tx',JSON.stringify(S.tx));}
+    if(rows.length>1){
+      const h=rows[0];
+      const loaded=rows.slice(1).map(row=>{
+        const o={};
+        h.forEach((k,i)=>o[k]=row[i]||'');
+        o.amount=parseFloat(o.amount)||0;
+        // 구 형식(person 컬럼 없음) 호환: person 없으면 source 기반으로 추정
+        if(!o.person) o.person=o.source==='shb'?'남편':(o.card&&o.card.includes('가족')?'아내':'남편');
+        return o;
+      }).filter(o=>o.id&&o.amount>0);
+      const ids=new Set(loaded.map(t=>t.id));
+      S.tx=[...loaded,...S.tx.filter(t=>!ids.has(t.id))];
+      localStorage.setItem('exp_tx',JSON.stringify(S.tx));
+    }
     const r2=await shReq('GET',`https://sheets.googleapis.com/v4/spreadsheets/${sid}/values/category_rules!A:C`);
     (r2.values||[]).slice(1).forEach(r=>{if(r[0])S.corr[r[0]]={category:r[1],subcategory:r[2]};});
+    hideBanner();
     renderDash();
   }catch(e){console.error('Sheets load:',e);}
 }
