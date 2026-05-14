@@ -171,6 +171,10 @@ select.cs:focus{outline:none;border-color:var(--accent)}
         </div>
         <button class="rbtn" onclick="refreshInsights()">🔄 인사이트 새로고침</button>
       </div>
+      <div class="card">
+        <div class="ctitle"><span class="cicon">🔄</span> 정기구독 현황 <span class="badge b" id="sub-mon-badge"></span></div>
+        <div id="sub-list"><div class="no-data">데이터 없음</div></div>
+      </div>
     </div>
   </div>
 </div>
@@ -653,57 +657,59 @@ function filterRv(){
   document.getElementById('rv-cnt').textContent=`${rvView.length}건`;
   renderRvTable(rvView);
 }
+// Safe ID for use inside HTML attribute strings — strip quotes and special chars
+function sid(id){return id.replace(/['"\\]/g,'_');}
+
 function renderRvTable(list){
   const tb=document.getElementById('rv-tbody');
-  if(!list.length){tb.innerHTML='<tr><td colspan="7" class="no-data">없음</td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="8" class="no-data">없음</td></tr>';return;}
   tb.innerHTML=list.map(t=>{
   const amb=isAmbiguous(mkey(t.merchant));
+  const s=sid(t.id);
   return`
-    <tr class="${t.isManual?'corr':''}" data-id="${t.id}">
+    <tr class="${t.isManual?'corr':''}" data-id="${s}">
       <td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.date}</td>
       <td><span class="badge ${t.source==='hyundai'?'b':'g'}" style="font-size:10px">${t.source==='hyundai'?'현대':'SHB'}</span></td>
-      <td><select class="cs" style="width:60px" onchange="updPerson('${t.id}',this.value)"><option value="남편" ${(t.person||'남편')==='남편'?'selected':''}>남편</option><option value="아내" ${t.person==='아내'?'selected':''}>아내</option></select></td>
-      <td class="txm" title="${t.merchant}">${t.merchant}${amb?` <span title="개별처리 가맹점 — 변경이 다른 행에 적용되지 않습니다" style="cursor:help;color:var(--orange);font-size:11px">⚡</span>`:''}</td>
+      <td><select class="cs" style="width:60px" onchange="updPerson('${s}',this.value)"><option value="남편" ${(t.person||'남편')==='남편'?'selected':''}>남편</option><option value="아내" ${t.person==='아내'?'selected':''}>아내</option></select></td>
+      <td class="txm" title="${t.merchant.replace(/"/g,'&quot;')}">${t.merchant}${amb?` <span title="개별처리 가맹점" style="cursor:help;color:var(--orange);font-size:11px">⚡</span>`:''}</td>
       <td class="txa">${fmt(t.amount)} <span style="color:var(--muted);font-weight:400;font-size:11px">${t.currency}</span></td>
-      <td>${csel(t.id,'cat',t.category)}</td>
-      <td>${csel(t.id,'sub',t.subcategory,t.category)}</td>
-      <td><input type="text" value="${t.memo||''}" placeholder="메모" style="border:1.5px solid var(--border);border-radius:6px;padding:4px 7px;font-size:12px;width:85px;font-family:inherit" onchange="updateMemo('${t.id}',this.value)"></td>
+      <td>${csel(s,'cat',t.category)}</td>
+      <td>${csel(s,'sub',t.subcategory,t.category)}</td>
+      <td><input type="text" value="${(t.memo||'').replace(/"/g,'&quot;')}" placeholder="메모" style="border:1.5px solid var(--border);border-radius:6px;padding:4px 7px;font-size:12px;width:85px;font-family:inherit" onchange="updateMemo('${s}',this.value)"></td>
     </tr>`;}).join('');
 }
 function csel(id,type,cur,par=''){
   if(type==='cat'){const opts=Object.keys(CATS).map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');return `<select class="cs" onchange="updCat('${id}','cat',this.value)">${opts}</select>`;}
   const subs=CATS[par]||['기타'];
-  const safeCur=subs.includes(cur)?cur:subs[0]; // normalize: invalid sub → first valid
+  const safeCur=subs.includes(cur)?cur:subs[0];
   const opts=subs.map(s=>`<option value="${s}" ${s===safeCur?'selected':''}>${s}</option>`).join('');
   return `<select class="cs" onchange="updCat('${id}','sub',this.value)">${opts}</select>`;
 }
-function updCat(id,type,val){
-  const t=S.pending.find(t=>t.id===id);if(!t)return;
+function updCat(sid_val,type,val){
+  // sid_val is the sanitized ID used in the DOM; find the real tx by matching
+  const t=S.pending.find(t=>sid(t.id)===sid_val);if(!t)return;
   const amb=isAmbiguous(mkey(t.merchant));
   if(type==='cat'){
     t.category=val;t.subcategory=CATS[val]?.[0]||'기타';t.isManual=true;
-    // 개별처리 가맹점이면 일괄 적용 건너뜀
-    if(!amb) S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.category=val;p.subcategory=t.subcategory;p.isManual=true;});
-    const row=document.querySelector(`tr[data-id="${id}"]`);
-    if(row){row.querySelectorAll('td')[5].innerHTML=csel(id,'sub',t.subcategory,val);row.classList.add('corr');}
+    if(!amb)S.pending.filter(p=>sid(p.id)!==sid_val&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.category=val;p.subcategory=t.subcategory;p.isManual=true;});
     renderRvTable(rvView);
-    saveCorr(t.merchant,val,t.subcategory); // isAmbiguous면 내부에서 skip
+    saveCorr(t.merchant,val,t.subcategory);
   }else{
     t.subcategory=val;t.isManual=true;
-    if(!amb) S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.subcategory=val;p.isManual=true;});
+    if(!amb)S.pending.filter(p=>sid(p.id)!==sid_val&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>{p.subcategory=val;p.isManual=true;});
     renderRvTable(rvView);
     saveCorr(t.merchant,t.category,val);
   }
 }
-function updateMemo(id,val){
-  const t=S.pending.find(t=>t.id===id);
+function updateMemo(sid_val,val){
+  const t=S.pending.find(t=>sid(t.id)===sid_val);
   if(!t)return;
   t.memo=val;
-  S.pending.filter(p=>p.id!==id&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>p.memo=val);
+  S.pending.filter(p=>sid(p.id)!==sid_val&&mkey(p.merchant)===mkey(t.merchant)).forEach(p=>p.memo=val);
   saveMemo(t.merchant,val);
 }
-function updPerson(id,val){
-  const t=S.pending.find(t=>t.id===id);
+function updPerson(sid_val,val){
+  const t=S.pending.find(t=>sid(t.id)===sid_val);
   if(t)t.person=val;
 }
 function confirmRv(){
@@ -715,7 +721,7 @@ function confirmRv(){
 }
 
 // ── DASHBOARD ──────────────────────────────────────
-function renderDash(){renderSum();renderMonChart();renderCatChart();renderYTD();renderLastMonth();if(S.cfg.ak)refreshInsights();else renderStaticInsights();}
+function renderDash(){renderSum();renderMonChart();renderCatChart();renderYTD();renderLastMonth();renderSubscriptions();if(S.cfg.ak)refreshInsights();else renderStaticInsights();}
 
 function renderYTD(){
   const krw=getTx('KRW');
@@ -819,7 +825,36 @@ function renderLastMonth(){
   document.getElementById('lm-bars').innerHTML=`<div style="display:flex;gap:4px;justify-content:flex-end;font-size:10px;color:var(--muted);margin-bottom:6px"><span style="width:50px;text-align:right">전월비</span><span style="width:54px;text-align:right">평균비</span></div>${html}`;
 }
 
-// ── AI ─────────────────────────────────────────────
+function renderSubscriptions(){
+  const krw=getTx('KRW');
+  const subs=krw.filter(t=>t.category==='정기구독');
+  if(!subs.length){document.getElementById('sub-list').innerHTML='<div class="no-data">정기구독 내역 없음</div>';document.getElementById('sub-mon-badge').textContent='';return;}
+
+  // Group by merchant, get latest amount and last seen date
+  const groups={};
+  subs.forEach(t=>{
+    const k=t.merchant.replace(/\s*\([^)]*\)/,'').trim(); // strip parentheses
+    if(!groups[k]||t.date>groups[k].date) groups[k]={date:t.date,amount:t.amount,merchant:t.merchant,count:0};
+    groups[k].count++;
+  });
+
+  // Estimate monthly cost (use latest seen amount)
+  const items=Object.values(groups).sort((a,b)=>b.amount-a.amount);
+  const monthlyTotal=items.reduce((s,i)=>s+i.amount,0);
+
+  document.getElementById('sub-mon-badge').textContent=`월 ${fmtK(monthlyTotal)}`;
+
+  document.getElementById('sub-list').innerHTML=items.map(i=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${i.merchant}">${i.merchant}</div>
+      <div style="font-size:12px;color:var(--muted);white-space:nowrap">${i.date.substring(0,7)}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;min-width:60px;text-align:right">${fmtK(i.amount)}</div>
+    </div>`).join('')+`
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:12px;padding-top:8px">
+      <span style="color:var(--muted)">${items.length}개 서비스</span>
+      <span style="color:var(--muted)">연간 추정 <strong style="color:var(--text)">${fmtK(monthlyTotal*12)}</strong></span>
+    </div>`;
+}
 async function refreshInsights(){
   if(!S.cfg.ak||!S.tx.length){renderStaticInsights();return;}
   document.getElementById('ai-box').innerHTML='<div class="spin-row"><div class="spinner"></div> AI 분석 중...</div>';
@@ -827,23 +862,61 @@ async function refreshInsights(){
     const ctx=buildCtx();
     const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':S.cfg.ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:700,system:'개인 지출 분석 전문가. 한국어로 실용적 인사이트 제공.',
-        messages:[{role:'user',content:`${ctx}\n\n다음 JSON으로만 응답:\n{"analysis":"2-3문장","savings":"절감항목 2-3문장","warning":"주의 1-2문장"}`}]})});
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:900,system:'개인 가계부 분석 전문가. 데이터 기반으로 구체적이고 실용적인 한국어 인사이트 제공. 숫자와 비율 적극 활용.',
+        messages:[{role:'user',content:`${ctx}\n\n아래 JSON으로만 응답:\n{"analysis":"지출 패턴 분석 3문장 (전월비·트렌드 포함)","savings":"절감 가능 항목 3문장 (구체적 금액 언급)","warning":"주의가 필요한 급증 항목 2문장","tip":"이번달 실행 가능한 절약 팁 1-2문장"}`}]})});
     const d=await res.json();
     const j=JSON.parse(d.content?.[0]?.text?.replace(/```json|```/g,'').trim()||'{}');
     document.getElementById('ai-box').innerHTML=`
       <div class="iblock"><span class="itag a">분석</span><p class="itext">${j.analysis||'—'}</p></div>
       <div class="iblock"><span class="itag s">절감 팁</span><p class="itext">${j.savings||'—'}</p></div>
-      <div class="iblock"><span class="itag w">주의</span><p class="itext">${j.warning||'—'}</p></div>`;
+      <div class="iblock"><span class="itag w">주의</span><p class="itext">${j.warning||'—'}</p></div>
+      ${j.tip?`<div class="iblock"><span class="itag" style="background:#E8F4FF;color:#1565C0">💡 팁</span><p class="itext">${j.tip}</p></div>`:''}`;
   }catch(e){document.getElementById('ai-box').innerHTML=`<p class="itext" style="color:var(--red)">오류: ${e.message}</p>`;}
 }
 function buildCtx(){
-  const months=getMonths(),krw=getTx('KRW'),lm=months[months.length-1]||'';
+  const months=getMonths(),krw=getTx('KRW'),lm=months[months.length-1]||'',pm=months[months.length-2]||'';
   const personLabel=S.person==='전체'?'전체':S.person;
-  return[`기간: ${months[0]||''} ~ ${lm}  [${personLabel}]`,`총 거래: ${krw.length}건`,
-    ...months.slice(-6).map(m=>`${m}: ${fmtK(sum(krw.filter(t=>t.date.startsWith(m))))}`),
-    '지난달 카테고리:',
-    ...Object.keys(CATS).map(c=>{const v=sum(krw.filter(t=>t.date.startsWith(lm)&&t.category===c));return v>0?`  ${c}: ${fmtK(v)}`:null;}).filter(Boolean)
+  const lmTx=krw.filter(t=>t.date.startsWith(lm));
+  const pmTx=krw.filter(t=>t.date.startsWith(pm));
+
+  // Top 5 merchants last month
+  const merchantTotals={};
+  lmTx.forEach(t=>{const k=t.merchant.substring(0,25);merchantTotals[k]=(merchantTotals[k]||0)+t.amount;});
+  const top5=Object.entries(merchantTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Subscription list
+  const subItems=[...new Set(krw.filter(t=>t.category==='정기구독').map(t=>t.merchant.substring(0,20)))];
+  const subTotal=krw.filter(t=>t.date.startsWith(lm)&&t.category==='정기구독').reduce((s,t)=>s+t.amount,0);
+
+  // Category trends (last 3 months)
+  const recentMonths=months.slice(-3);
+
+  return[
+    `[${personLabel}] 분석 기간: ${months[0]||''} ~ ${lm}`,
+    ``,
+    `[월별 지출]`,
+    ...months.slice(-6).map(m=>`  ${m}: ${fmtK(sum(krw.filter(t=>t.date.startsWith(m))))}만원`),
+    ``,
+    `[지난달 카테고리 지출] ${lm}`,
+    ...Object.keys(CATS).map(c=>{
+      const v=sum(lmTx.filter(t=>t.category===c));
+      const pv=sum(pmTx.filter(t=>t.category===c));
+      const chg=pv?Math.round((v-pv)/pv*100):null;
+      return v>0?`  ${c}: ${fmtK(v)} ${chg!==null?`(${chg>0?'+':''}${chg}% 전월비)`:''}`:null;
+    }).filter(Boolean),
+    ``,
+    `[지난달 TOP 5 가맹점]`,
+    ...top5.map(([k,v])=>`  ${k}: ${fmtK(v)}`),
+    ``,
+    `[정기구독] ${subItems.length}개 / 월 ${fmtK(subTotal)}`,
+    ...subItems.map(s=>`  - ${s}`),
+    ``,
+    `[카테고리 3개월 추이]`,
+    ...Object.keys(CATS).filter(c=>c!=='기타').map(c=>{
+      const vals=recentMonths.map(m=>sum(krw.filter(t=>t.date.startsWith(m)&&t.category===c)));
+      if(!vals.some(v=>v>0))return null;
+      return `  ${c}: ${vals.map(v=>fmtK(v)).join(' → ')}`;
+    }).filter(Boolean)
   ].join('\n');
 }
 function renderStaticInsights(){
@@ -976,51 +1049,46 @@ function filterTl(){
 function renderTlTable(list){
   const tb=document.getElementById('tl-tbody');
   if(!list.length){tb.innerHTML='<tr><td colspan="8" class="no-data">없음</td></tr>';return;}
-  tb.innerHTML=list.map(t=>`
-    <tr data-id="${t.id}">
+  tb.innerHTML=list.map(t=>{const s=sid(t.id);return`
+    <tr data-id="${s}">
       <td style="white-space:nowrap;color:var(--muted);font-size:12px">${t.date}</td>
       <td><span class="badge ${t.source==='hyundai'?'b':'g'}" style="font-size:10px">${t.source==='hyundai'?'현대':'SHB'}</span></td>
-      <td><select class="cs" style="width:60px" onchange="tlPerson('${t.id}',this.value)"><option value="남편" ${(t.person||'남편')==='남편'?'selected':''}>남편</option><option value="아내" ${t.person==='아내'?'selected':''}>아내</option></select></td>
-      <td class="txm" title="${t.merchant}">${t.merchant}</td>
+      <td><select class="cs" style="width:60px" onchange="tlPerson('${s}',this.value)"><option value="남편" ${(t.person||'남편')==='남편'?'selected':''}>남편</option><option value="아내" ${t.person==='아내'?'selected':''}>아내</option></select></td>
+      <td class="txm" title="${t.merchant.replace(/"/g,'&quot;')}">${t.merchant}</td>
       <td class="txa">${fmt(t.amount)} <span style="color:var(--muted);font-weight:400;font-size:11px">${t.currency}</span></td>
-      <td>${tlCsel(t.id,'cat',t.category)}</td>
-      <td>${tlCsel(t.id,'sub',t.subcategory,t.category)}</td>
-      <td><input type="text" value="${t.memo||''}" placeholder="메모" style="border:1.5px solid var(--border);border-radius:6px;padding:4px 7px;font-size:12px;width:90px;font-family:inherit" onchange="tlMemo('${t.id}',this.value)"></td>
-      <td><button onclick="deleteTx('${t.id}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;padding:0 4px" title="삭제">🗑</button></td>
-    </tr>`).join('');
+      <td>${tlCsel(s,'cat',t.category)}</td>
+      <td>${tlCsel(s,'sub',t.subcategory,t.category)}</td>
+      <td><input type="text" value="${(t.memo||'').replace(/"/g,'&quot;')}" placeholder="메모" style="border:1.5px solid var(--border);border-radius:6px;padding:4px 7px;font-size:12px;width:90px;font-family:inherit" onchange="tlMemo('${s}',this.value)"></td>
+      <td><button onclick="deleteTx('${s}')" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;padding:0 4px" title="삭제">🗑</button></td>
+    </tr>`;}).join('');
 }
 function tlCsel(id,type,cur,par=''){
   if(type==='cat'){const opts=Object.keys(CATS).map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');return `<select class="cs" onchange="tlUpdCat('${id}','cat',this.value)">${opts}</select>`;}
   const subs=CATS[par]||['기타'];
-  const safeCur=subs.includes(cur)?cur:subs[0]; // normalize: invalid sub → first valid
+  const safeCur=subs.includes(cur)?cur:subs[0];
   const opts=subs.map(s=>`<option value="${s}" ${s===safeCur?'selected':''}>${s}</option>`).join('');
   return `<select class="cs" onchange="tlUpdCat('${id}','sub',this.value)">${opts}</select>`;
 }
-function tlUpdCat(id,type,val){
-  const t=S.tx.find(t=>t.id===id);if(!t)return;
+function tlUpdCat(sid_val,type,val){
+  const t=S.tx.find(t=>sid(t.id)===sid_val);if(!t)return;
   if(type==='cat'){t.category=val;t.subcategory=CATS[val]?.[0]||'기타';
-    const row=document.querySelector(`#tl-tbody tr[data-id="${id}"]`);
-    if(row){row.querySelectorAll('td')[5].innerHTML=tlCsel(id,'sub',t.subcategory,val);}
     saveCorr(t.merchant,val,t.subcategory);
   }else{t.subcategory=val;saveCorr(t.merchant,t.category,val);}
   localStorage.setItem('exp_tx',JSON.stringify(S.tx));
-  renderDash();
+  filterTl(); renderDash();
 }
-function tlMemo(id,val){
-  const t=S.tx.find(t=>t.id===id);if(!t)return;
-  t.memo=val;
-  saveMemo(t.merchant,val);
+function tlMemo(sid_val,val){
+  const t=S.tx.find(t=>sid(t.id)===sid_val);if(!t)return;
+  t.memo=val;saveMemo(t.merchant,val);
   localStorage.setItem('exp_tx',JSON.stringify(S.tx));
 }
-function tlPerson(id,val){
-  const t=S.tx.find(t=>t.id===id);if(!t)return;
-  t.person=val;
-  localStorage.setItem('exp_tx',JSON.stringify(S.tx));
-  renderDash();
+function tlPerson(sid_val,val){
+  const t=S.tx.find(t=>sid(t.id)===sid_val);if(!t)return;
+  t.person=val;localStorage.setItem('exp_tx',JSON.stringify(S.tx));renderDash();
 }
-function deleteTx(id){
+function deleteTx(sid_val){
   if(!confirm('이 거래내역을 삭제하시겠습니까?'))return;
-  S.tx=S.tx.filter(t=>t.id!==id);
+  S.tx=S.tx.filter(t=>sid(t.id)!==sid_val);
   localStorage.setItem('exp_tx',JSON.stringify(S.tx));
   filterTl();
   renderDash();
