@@ -175,8 +175,9 @@ select.cs:focus{outline:none;border-color:var(--accent)}
         <div style="height:300px"><canvas id="c-mon"></canvas></div>
       </div>
       <div class="card">
-        <div class="ctitle"><span class="cicon">🏷️</span> 카테고리 추이 <span style="font-size:11px;color:var(--muted);font-weight:400">(KRW 환산)</span></div>
-        <div style="height:375px"><canvas id="c-cat"></canvas></div>
+        <div class="ctitle"><span class="cicon">📊</span> 월별 항목별 지출 <span style="font-size:11px;color:var(--muted);font-weight:400">(KRW 환산)</span></div>
+        <div style="height:320px"><canvas id="c-cat"></canvas></div>
+        <div id="c-cat-legend" style="display:flex;gap:0 16px;margin-top:10px;flex-wrap:wrap"></div>
       </div>
     </div>
     <div class="panel" id="panel-center">
@@ -197,10 +198,6 @@ select.cs:focus{outline:none;border-color:var(--accent)}
           <div class="iblock"><span class="itag s">절감 팁</span><p class="itext">설정에서 Anthropic API 키를 입력하면 맞춤형 인사이트를 제공합니다.</p></div>
         </div>
         <button class="rbtn" onclick="refreshInsights()">🔄 인사이트 새로고침</button>
-      </div>
-      <div class="card">
-        <div class="ctitle"><span class="cicon">🔄</span> 정기구독 현황 <span class="badge b" id="sub-mon-badge"></span></div>
-        <div id="sub-list"><div class="no-data">데이터 없음</div></div>
       </div>
     </div>
   </div>
@@ -791,7 +788,7 @@ function confirmRv(){
 // ── DASHBOARD ──────────────────────────────────────
 function renderDash(){
   updateFxLabel();
-  renderSum();renderMonChart();renderCatChart();renderYTD();renderLastMonth();renderSubscriptions();renderTripTiles();
+  renderSum();renderMonChart();renderCatChart();renderYTD();renderLastMonth();renderTripTiles();
   if(S.cfg.ak)refreshInsights();else renderStaticInsights();
 }
 
@@ -864,19 +861,38 @@ function renderMonChart(){
 }
 
 function renderCatChart(){
-  const all=getTx(),months=getMonths().slice(-6);
-  const colors=['#6B7FD7','#2ECC8A','#F09E4B','#E85757','#A88CFF','#3ABDE8','#FF8C69','#66D9C2'];
-  const datasets=Object.keys(CATS).filter(c=>c!=='기타').map((cat,i)=>({
+  const all=getTx(), months=getMonths(); // 월별 지출과 동일한 전체 월 사용
+  const colors={
+    '생활':'#6B7FD7','국내여행':'#2ECC8A','해외여행':'#F09E4B',
+    '교육':'#E85757','건강':'#A88CFF','교통':'#3ABDE8',
+    '즐거움':'#FF8C69','정기구독':'#66D9C2','선물':'#F7C948','기타':'#C0C0C0'
+  };
+  const datasets=Object.keys(CATS).map(cat=>({
     label:cat,
     data:months.map(m=>all.filter(t=>t.date.startsWith(m)&&t.category===cat).reduce((s,t)=>s+txKRW(t),0)),
-    backgroundColor:colors[i%colors.length],borderRadius:4,stack:'s'
+    backgroundColor:colors[cat]||'#999',borderRadius:4,stack:'s'
   })).filter(d=>d.data.some(v=>v>0));
+
   const ctx=document.getElementById('c-cat');
   if(S.charts.cat)S.charts.cat.destroy();
   S.charts.cat=new Chart(ctx,{type:'bar',data:{labels:months.map(m=>m.slice(2).replace('-','/')),datasets},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{family:'DM Sans',size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtK(c.parsed.y)}`}}},
-      scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,grid:{color:'#F0F2F8'},ticks:{callback:v=>fmtK(v)}}}}});
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtK(c.parsed.y)}`}}},
+      scales:{x:{stacked:true,grid:{display:false},ticks:{font:{family:'DM Sans',size:11}}},
+              y:{stacked:true,grid:{color:'#F0F2F8'},ticks:{callback:v=>fmtK(v),font:{family:'DM Sans',size:11}}}}}});
+
+  // 2열 커스텀 범례
+  const col1=['생활','교육','건강','교통','정기구독'];
+  const col2=['국내여행','해외여행','즐거움','선물','기타'];
+  const legEl=document.getElementById('c-cat-legend');
+  if(!legEl)return;
+  const mkCol=cats=>cats.filter(c=>datasets.find(d=>d.label===c)).map(c=>`
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text);white-space:nowrap;margin-bottom:3px">
+      <span style="width:10px;height:10px;border-radius:2px;background:${colors[c]||'#999'};flex-shrink:0"></span>${c}
+    </div>`).join('');
+  legEl.innerHTML=`
+    <div style="flex:1;display:flex;flex-direction:column">${mkCol(col1)}</div>
+    <div style="flex:1;display:flex;flex-direction:column">${mkCol(col2)}</div>`;
 }
 
 function renderYTD(){
@@ -1194,7 +1210,7 @@ function renderTripTiles(){
       <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700">${trip.name}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${trip.startDate.slice(5)} ~ ${trip.endDate.slice(5)} · ${trip.txs.length}건</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${trip.txs.length}건</div>
         </div>
         <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;background:${typeColor}22;color:${typeColor};white-space:nowrap">${typeLabel}</span>
       </div>
