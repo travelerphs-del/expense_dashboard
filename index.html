@@ -105,7 +105,17 @@ select.cs:focus{outline:none;border-color:var(--accent)}
 .ptab{padding:5px 14px;border:none;background:none;border-radius:6px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;font-family:inherit;transition:.15s;white-space:nowrap}
 .ptab.active{background:var(--card);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.08)}
 .ptab.h{color:#5168C8}.ptab.w{color:#D94F8A}
-@media(max-width:900px){.dgrid{grid-template-columns:1fr}.sum-grid{grid-template-columns:1fr 1fr}.wrap{padding:14px 12px 40px}.nav-logo span{display:none}.ig{grid-template-columns:1fr}}
+@media(max-width:900px){
+  .dgrid{grid-template-columns:1fr}
+  .sum-grid{grid-template-columns:1fr 1fr}
+  .wrap{padding:14px 12px 40px}
+  .nav-logo span{display:none}
+  .ig{grid-template-columns:1fr}
+  #trip-tiles{grid-template-columns:1fr!important}
+  #panel-left{order:1}
+  #panel-center{order:2}
+  #panel-right{order:3}
+}
 @media(max-width:500px){.sum-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -137,27 +147,39 @@ select.cs:focus{outline:none;border-color:var(--accent)}
   <button onclick="connectGoogle()" class="btn btn-p btn-sm">🔗 연결해서 불러오기</button>
   <button onclick="hideBanner()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;margin-left:auto">×</button>
 </div>
+  <!-- SUMMARY CARDS -->
   <div class="sum-grid" style="grid-template-columns:repeat(3,1fr)">
-    <div class="stat"><div class="slabel">연간 누적 KRW</div><div class="sval" id="s-krw">—</div><div class="ssub" id="s-krw2"></div></div>
-    <div class="stat"><div class="slabel">최근월 지출</div><div class="sval" id="s-mon">—</div><div class="ssub" id="s-mon2"></div></div>
-    <div class="stat"><div class="slabel">월 평균 KRW</div><div class="sval" id="s-avg">—</div><div class="ssub" id="s-avg2"></div></div>
+    <div class="stat"><div class="slabel">연간 지출 누적</div><div class="sval" id="s-krw">—</div><div class="ssub" id="s-krw2"></div></div>
+    <div class="stat"><div class="slabel">지난달 지출</div><div class="sval" id="s-mon">—</div><div class="ssub" id="s-mon2"></div></div>
+    <div class="stat"><div class="slabel">월 평균 지출</div><div class="sval" id="s-avg">—</div><div class="ssub" id="s-avg2"></div></div>
   </div>
+  <!-- 환율 고시 -->
+  <div style="text-align:right;font-size:11px;color:var(--muted);margin:-10px 0 14px;padding-right:2px">
+    📌 <span id="fx-label"></span> · KRW 환산 기준
+  </div>
+
+  <!-- TRAVEL TILES -->
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:13px;font-weight:700">✈️ 최근 여행</span>
+      <span style="font-size:11px;color:var(--muted)">국내/해외여행 카테고리 거래의 메모에 여행명 입력 시 자동 집계</span>
+    </div>
+    <div id="trip-tiles" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px"></div>
+  </div>
+
+  <!-- DASHBOARD GRID -->
   <div class="dgrid">
-    <div class="panel">
+    <div class="panel" id="panel-left">
       <div class="card">
-        <div class="ctitle"><span class="cicon">📅</span> 월별 지출</div>
-        <div class="tabs">
-          <button class="tab active" onclick="switchTab('krw',this)">KRW 현대카드</button>
-          <button class="tab" onclick="switchTab('vnd',this)">VND SHB</button>
-        </div>
+        <div class="ctitle"><span class="cicon">📅</span> 월별 지출 <span style="font-size:11px;color:var(--muted);font-weight:400">(KRW 환산)</span></div>
         <div style="height:300px"><canvas id="c-mon"></canvas></div>
       </div>
       <div class="card">
-        <div class="ctitle"><span class="cicon">🏷️</span> 카테고리 추이</div>
+        <div class="ctitle"><span class="cicon">🏷️</span> 카테고리 추이 <span style="font-size:11px;color:var(--muted);font-weight:400">(KRW 환산)</span></div>
         <div style="height:375px"><canvas id="c-cat"></canvas></div>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" id="panel-center">
       <div class="card">
         <div class="ctitle"><span class="cicon">📊</span> 올해 누적 분석 <span class="badge b" id="ytd-badge">—</span></div>
         <div id="ytd-bars"><div class="no-data">데이터를 가져오면 표시됩니다</div></div>
@@ -167,7 +189,7 @@ select.cs:focus{outline:none;border-color:var(--accent)}
         <div id="lm-bars"><div class="no-data">데이터를 가져오면 표시됩니다</div></div>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" id="panel-right">
       <div class="card" style="flex:1">
         <div class="ctitle"><span class="cicon">🤖</span> AI 인사이트</div>
         <div id="ai-box">
@@ -391,10 +413,39 @@ const RULES=[
 ];
 
 let S={tx:[],pending:[],corr:{},memos:{},cfg:{},gTok:null,charts:{},tab:'krw',person:'전체',
-  // 개별처리 가맹점: 카테고리 변경 시 다른 행에 일괄 적용 안 하고 규칙도 저장 안 함
-  ambiguous:['grab']
+  ambiguous:['grab'],
+  trips:[] // [{id,name,type:'국내여행'|'해외여행',startDate,endDate}]
 };
 let F={sn:null,so:null,hc:[]};
+
+// ── 환율 (가져오기 시 자동 조회) ───────────────────
+const FX_FALLBACK = 18.5;
+function getRate(){ return S.cfg.fxRate||FX_FALLBACK; }
+function toKRW(amount,currency){ return currency==='KRW'?amount:amount/getRate(); }
+function txKRW(t){ return toKRW(t.amount,t.currency); }
+
+async function fetchExchangeRate(){
+  try{
+    const res=await fetch('https://open.er-api.com/v6/latest/KRW');
+    const data=await res.json();
+    if(data.result==='success'&&data.rates?.VND){
+      S.cfg.fxRate=data.rates.VND;
+      const now=new Date();
+      S.cfg.fxDate=`${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일`;
+      localStorage.setItem('exp_cfg',JSON.stringify(S.cfg));
+      updateFxLabel();
+      return true;
+    }
+  }catch(e){ console.warn('환율 조회 실패, 직전 환율 사용:', e); }
+  return false;
+}
+function updateFxLabel(){
+  const el=document.getElementById('fx-label');
+  if(!el)return;
+  const rate=getRate();
+  const date=S.cfg.fxDate||'고정값';
+  el.textContent=`1 KRW = ${rate.toFixed(1)} VND (${date} 기준)`;
+}
 
 function init(){
   try{S.cfg=JSON.parse(localStorage.getItem('exp_cfg')||'{}');}catch(e){}
@@ -402,6 +453,7 @@ function init(){
   try{S.memos=JSON.parse(localStorage.getItem('exp_memos')||'{}');}catch(e){}
   try{S.tx=JSON.parse(localStorage.getItem('exp_tx')||'[]');}catch(e){}
   try{const a=JSON.parse(localStorage.getItem('exp_ambiguous')||'null');if(a)S.ambiguous=a;}catch(e){}
+  try{const t=JSON.parse(localStorage.getItem('exp_trips')||'null');if(t)S.trips=t;}catch(e){}
   if(S.cfg.ak)document.getElementById('set-ak').value=S.cfg.ak;
   if(S.cfg.cid)document.getElementById('set-cid').value=S.cfg.cid;
   if(S.cfg.sid)document.getElementById('set-sid').value=S.cfg.sid;
@@ -432,6 +484,9 @@ function dropF(e,slot){e.preventDefault();document.getElementById(`dz-${slot}`).
 async function parseAll(){
   const st=document.getElementById('parse-st');
   document.getElementById('parse-btn').disabled=true;
+  // 환율 먼저 조회
+  st.innerHTML='<div style="display:flex;align-items:center;gap:8px"><div class="spinner"></div> 환율 조회 중...</div>';
+  await fetchExchangeRate();
   let parsed=[];
   try{
     if(F.sn||F.so){
@@ -734,7 +789,11 @@ function confirmRv(){
 }
 
 // ── DASHBOARD ──────────────────────────────────────
-function renderDash(){renderSum();renderMonChart();renderCatChart();renderYTD();renderLastMonth();renderSubscriptions();if(S.cfg.ak)refreshInsights();else renderStaticInsights();}
+function renderDash(){
+  updateFxLabel();
+  renderSum();renderMonChart();renderCatChart();renderYTD();renderLastMonth();renderSubscriptions();renderTripTiles();
+  if(S.cfg.ak)refreshInsights();else renderStaticInsights();
+}
 
 function renderYTD(){
   const krw=getTx('KRW');
@@ -776,56 +835,107 @@ function renderYTD(){
 }
 
 function renderSum(){
-  const krw=getTx('KRW');
+  const all=getTx();
   const months=getMonths(),lm=months[months.length-1]||'',pm=months[months.length-2]||'';
-  const tot=sum(krw),thisM=sum(krw.filter(t=>t.date.startsWith(lm))),prevM=sum(krw.filter(t=>t.date.startsWith(pm)));
-  const avg=months.length?tot/months.length:0;
-  document.getElementById('s-krw').textContent=fmtK(tot);
+  const year=lm.substring(0,4);
+  const ytd=all.filter(t=>t.date.startsWith(year));
+  const totYTD=ytd.reduce((s,t)=>s+txKRW(t),0);
+  const thisM=all.filter(t=>t.date.startsWith(lm)).reduce((s,t)=>s+txKRW(t),0);
+  const prevM=all.filter(t=>t.date.startsWith(pm)).reduce((s,t)=>s+txKRW(t),0);
+  const avgM=months.length?all.reduce((s,t)=>s+txKRW(t),0)/months.length:0;
+  document.getElementById('s-krw').textContent=fmtK(totYTD);
   document.getElementById('s-mon').textContent=fmtK(thisM);
-  document.getElementById('s-avg').textContent=fmtK(Math.round(avg));
+  document.getElementById('s-avg').textContent=fmtK(Math.round(avgM));
   const p=prevM?(thisM-prevM)/prevM*100:0;
   const e=document.getElementById('s-mon2');if(p){e.textContent=`전월 대비 ${p>0?'+':''}${p.toFixed(1)}%`;e.className=`ssub ${p>0?'up':'down'}`;}
-  const q=avg?(thisM-avg)/avg*100:0;
+  const q=avgM?(thisM-avgM)/avgM*100:0;
   const e2=document.getElementById('s-avg2');e2.textContent=`평균 대비 ${q>0?'+':''}${q.toFixed(1)}%`;e2.className=`ssub ${q>0?'up':'down'}`;
 }
 
 function renderMonChart(){
-  const txs=getTx(S.tab==='krw'?'KRW':'VND');
+  const all=getTx();
   const months=getMonths();
-  const data=months.map(m=>sum(txs.filter(t=>t.date.startsWith(m))));
+  const data=months.map(m=>all.filter(t=>t.date.startsWith(m)).reduce((s,t)=>s+txKRW(t),0));
   const ctx=document.getElementById('c-mon');
   if(S.charts.mon)S.charts.mon.destroy();
   S.charts.mon=new Chart(ctx,{type:'bar',data:{labels:months.map(m=>m.slice(2).replace('-','/')),datasets:[{data,backgroundColor:'#6B7FD7',borderRadius:6}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtK(c.parsed.y)}}},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmtK(c.parsed.y)+'\u20A9'}}},
       scales:{x:{grid:{display:false},ticks:{font:{family:'DM Sans',size:11}}},y:{grid:{color:'#F0F2F8'},ticks:{callback:v=>fmtK(v),font:{family:'DM Sans',size:11}}}}}});
 }
-function switchTab(tab,btn){S.tab=tab;document.querySelectorAll('.tabs .tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderMonChart();}
 
 function renderCatChart(){
-  const krw=getTx('KRW'),months=getMonths().slice(-6);
+  const all=getTx(),months=getMonths().slice(-6);
   const colors=['#6B7FD7','#2ECC8A','#F09E4B','#E85757','#A88CFF','#3ABDE8','#FF8C69','#66D9C2'];
-  const datasets=Object.keys(CATS).filter(c=>c!=='기타').map((cat,i)=>({label:cat,data:months.map(m=>sum(krw.filter(t=>t.date.startsWith(m)&&t.category===cat))),backgroundColor:colors[i%colors.length],borderRadius:4,stack:'s'})).filter(d=>d.data.some(v=>v>0));
+  const datasets=Object.keys(CATS).filter(c=>c!=='기타').map((cat,i)=>({
+    label:cat,
+    data:months.map(m=>all.filter(t=>t.date.startsWith(m)&&t.category===cat).reduce((s,t)=>s+txKRW(t),0)),
+    backgroundColor:colors[i%colors.length],borderRadius:4,stack:'s'
+  })).filter(d=>d.data.some(v=>v>0));
   const ctx=document.getElementById('c-cat');
   if(S.charts.cat)S.charts.cat.destroy();
   S.charts.cat=new Chart(ctx,{type:'bar',data:{labels:months.map(m=>m.slice(2).replace('-','/')),datasets},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{family:'DM Sans',size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtK(c.parsed.y)}`}}},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{family:'DM Sans',size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtK(c.parsed.y)}`}}},
       scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,grid:{color:'#F0F2F8'},ticks:{callback:v=>fmtK(v)}}}}});
+}
+
+function renderYTD(){
+  const all=getTx();
+  if(!all.length){document.getElementById('ytd-bars').innerHTML='<div class="no-data">데이터 없음</div>';return;}
+  const months=getMonths();
+  const lm=months[months.length-1]||'';
+  const year=lm.substring(0,4);
+  document.getElementById('ytd-badge').textContent=year+'년';
+  const ytd=all.filter(t=>t.date.startsWith(year));
+  const total=ytd.reduce((s,t)=>s+txKRW(t),0);
+  if(!total){document.getElementById('ytd-bars').innerHTML='<div class="no-data">해당 연도 데이터 없음</div>';return;}
+  const cats=Object.keys(CATS).map(c=>({cat:c,val:ytd.filter(t=>t.category===c).reduce((s,t)=>s+txKRW(t),0)}))
+    .filter(x=>x.val>0).sort((a,b)=>b.val-a.val);
+  const maxV=cats[0].val;
+  const prevYear=String(parseInt(year)-1);
+  const prevYTD=all.filter(t=>t.date.startsWith(prevYear));
+  const html=cats.map(({cat,val})=>{
+    const pct=(val/maxV*100).toFixed(0);
+    const share=(val/total*100).toFixed(0);
+    const prevVal=prevYTD.filter(t=>t.category===cat).reduce((s,t)=>s+txKRW(t),0);
+    const chg=prevVal?(val-prevVal)/prevVal*100:null;
+    return `<div class="bar-item">
+      <div class="blabel">${cat}</div>
+      <div class="btrack"><div class="bfill" style="width:${pct}%"><span class="bamount">${fmtK(val)}</span></div></div>
+      <div class="bchg" style="color:var(--muted);font-weight:500">${share}%</div>
+      <div class="bavg ${chg===null?'':chg>0?'up':'down'}">${chg===null?'':(chg>0?'▲':'▼')+Math.abs(chg).toFixed(0)+'%'}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('ytd-bars').innerHTML=`
+    <div style="display:flex;gap:4px;justify-content:flex-end;font-size:10px;color:var(--muted);margin-bottom:6px">
+      <span style="width:50px;text-align:right">비중</span><span style="width:54px;text-align:right">전년비</span>
+    </div>${html}
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
+      합계 <strong style="color:var(--text)">${fmtK(total)}</strong> ₩ · ${ytd.length}건
+    </div>`;
 }
 
 function renderLastMonth(){
   const months=getMonths();if(!months.length)return;
   const lm=months[months.length-1],pm=months[months.length-2]||'';
   document.getElementById('lm-badge').textContent=lm.slice(2).replace('-','/');
-  const krw=getTx('KRW');
-  const cats=Object.keys(CATS).map(c=>({cat:c,val:sum(krw.filter(t=>t.date.startsWith(lm)&&t.category===c))})).filter(x=>x.val>0).sort((a,b)=>b.val-a.val);
+  const all=getTx();
+  const lmTx=all.filter(t=>t.date.startsWith(lm));
+  const pmTx=all.filter(t=>t.date.startsWith(pm));
+  const cats=Object.keys(CATS).map(c=>({
+    cat:c,val:lmTx.filter(t=>t.category===c).reduce((s,t)=>s+txKRW(t),0)
+  })).filter(x=>x.val>0).sort((a,b)=>b.val-a.val);
   if(!cats.length){document.getElementById('lm-bars').innerHTML='<div class="no-data">해당 월 데이터 없음</div>';return;}
   const maxV=cats[0].val;
   const allM=getMonths();
   const catAvg={};
-  Object.keys(CATS).forEach(c=>{const vs=allM.map(m=>sum(krw.filter(t=>t.date.startsWith(m)&&t.category===c))).filter(v=>v>0);catAvg[c]=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:0;});
+  Object.keys(CATS).forEach(c=>{
+    const vs=allM.map(m=>all.filter(t=>t.date.startsWith(m)&&t.category===c).reduce((s,t)=>s+txKRW(t),0)).filter(v=>v>0);
+    catAvg[c]=vs.length?vs.reduce((a,b)=>a+b,0)/vs.length:0;
+  });
   const html=cats.map(({cat,val})=>{
     const pct=(val/maxV*100).toFixed(0);
-    const prev=sum(krw.filter(t=>t.date.startsWith(pm)&&t.category===cat));
+    const prev=pmTx.filter(t=>t.category===cat).reduce((s,t)=>s+txKRW(t),0);
     const chg=prev?(val-prev)/prev*100:null;
     const avgV=catAvg[cat]?(val-catAvg[cat])/catAvg[cat]*100:null;
     return `<div class="bar-item">
@@ -837,6 +947,7 @@ function renderLastMonth(){
   }).join('');
   document.getElementById('lm-bars').innerHTML=`<div style="display:flex;gap:4px;justify-content:flex-end;font-size:10px;color:var(--muted);margin-bottom:6px"><span style="width:50px;text-align:right">전월비</span><span style="width:54px;text-align:right">평균비</span></div>${html}`;
 }
+
 
 function renderSubscriptions(){
   const krw=getTx('KRW');
@@ -1044,7 +1155,58 @@ function saveSettings(){
 }
 function clearData(){if(!confirm('모든 로컬 데이터를 삭제하시겠습니까?'))return;['exp_tx','exp_corr','exp_cfg'].forEach(k=>localStorage.removeItem(k));location.reload();}
 
-// ── TX LIST (saved tx editor) ──────────────────────
+// ── TRIP TILES (메모 기반 자동 집계) ───────────────
+function computeTrips(){
+  const travelTx=getTx().filter(t=>
+    (t.category==='국내여행'||t.category==='해외여행')&&t.memo&&t.memo.trim()
+  );
+  if(!travelTx.length)return[];
+  const groups={};
+  travelTx.forEach(t=>{
+    const key=t.memo.trim();
+    if(!groups[key])groups[key]={name:key,types:{},txs:[],startDate:t.date,endDate:t.date};
+    groups[key].txs.push(t);
+    groups[key].types[t.category]=(groups[key].types[t.category]||0)+1;
+    if(t.date<groups[key].startDate)groups[key].startDate=t.date;
+    if(t.date>groups[key].endDate)groups[key].endDate=t.date;
+  });
+  return Object.values(groups)
+    .map(g=>({...g,type:Object.entries(g.types).sort((a,b)=>b[1]-a[1])[0][0]}))
+    .sort((a,b)=>b.endDate.localeCompare(a.endDate))
+    .slice(0,3);
+}
+
+function renderTripTiles(){
+  const el=document.getElementById('trip-tiles');
+  const trips=computeTrips();
+  const empty=`<div class="card" style="opacity:.35;font-size:13px;color:var(--muted);text-align:center;padding:28px 16px">여행 카테고리 거래에<br>메모로 여행명 입력 시<br>자동 집계됩니다</div>`;
+  if(!trips.length){el.innerHTML=empty+empty+empty;return;}
+  while(trips.length<3)trips.push(null);
+  el.innerHTML=trips.map(trip=>{
+    if(!trip)return empty;
+    const total=trip.txs.reduce((s,t)=>s+txKRW(t),0);
+    const subTotals={};
+    trip.txs.forEach(t=>{subTotals[t.subcategory]=(subTotals[t.subcategory]||0)+txKRW(t);});
+    const subs=Object.entries(subTotals).sort((a,b)=>b[1]-a[1]);
+    const typeColor=trip.type==='해외여행'?'#5168C8':'#2ECC8A';
+    const typeLabel=trip.type==='해외여행'?'🌍 해외':'🗺️ 국내';
+    return `<div class="card">
+      <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700">${trip.name}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${trip.startDate.slice(5)} ~ ${trip.endDate.slice(5)} · ${trip.txs.length}건</div>
+        </div>
+        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;background:${typeColor}22;color:${typeColor};white-space:nowrap">${typeLabel}</span>
+      </div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:10px">${fmtK(total)} <span style="font-size:12px;font-weight:400;color:var(--muted)">₩</span></div>
+      ${subs.slice(0,5).map(([sub,val])=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+          <span style="color:var(--muted)">${sub}</span>
+          <span><strong>${fmtK(val)}</strong> <span style="color:var(--muted)">${total?(val/total*100).toFixed(0):0}%</span></span>
+        </div>`).join('')}
+    </div>`;
+  }).join('');
+}
 let tlView=[];
 function openTxList(){
   // Populate filters
